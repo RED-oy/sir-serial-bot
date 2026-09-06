@@ -5,10 +5,12 @@ const BOT_TOKEN = '8993447347:AAHjIP5P5XOoTqyRyP2nV5b_sEtZC_U7qoE';
 const CHAT_ID = '8932051360';
 
 const API_URL = 'http://210.4.73.10:52/appointments/trust_apt_pub/appointment';
-const PAGE_URL = 'http://210.4.73.10:52/appointments/apps/appointment/1427/13003';
-const CHAMBER_ID = '1427';
 
-// র্যান্ডম পেশেন্ট জেনারেটর ডেটাবেজ
+// নতুন ডাক্তার (1460/13030) এর কনফিগারেশন
+const PAGE_URL = 'http://210.4.73.10:52/appointments/apps/appointment/1460/13030';
+const CHAMBER_ID = '1460';
+const AVERAGE_TIME = '6'; // আপনার Raw Request থেকে পাওয়া সঠিক টাইমিং
+
 const MALE_NAMES = ["Tanvir Ahmed", "Sajid Hasan", "Naimur Rahman", "Arif Hossain", "Rakibul Islam", "Fahim Shahriar", "Mehedi Hasan"];
 const FEMALE_NAMES = ["Nusrat Jahan", "Sadia Sultana", "Farhana Akter", "Ayesha Siddiqua", "Sabrina Khan", "Mim Akter", "Tasnim Famida"];
 
@@ -21,16 +23,15 @@ function getRandomPhone() {
 
 function generatePatients(totalCount) {
   const patients = [
-    { name: "Rabbi", phone: "01947673671", gender: "Male", type: "New" } // ১ম সিরিয়াল নির্দিষ্ট
+    { name: "Mohammad Ali", phone: "01947673671", gender: "Male", type: "New" }
   ];
 
   for (let i = 2; i <= totalCount; i++) {
     const isMale = Math.random() > 0.5;
     const nameList = isMale ? MALE_NAMES : FEMALE_NAMES;
-    const randomName = nameList[Math.floor(Math.random() * nameList.length)];
     
     patients.push({
-      name: randomName,
+      name: nameList[Math.floor(Math.random() * nameList.length)],
       phone: getRandomPhone(),
       gender: isMale ? "Male" : "Female",
       type: "New"
@@ -51,7 +52,6 @@ async function sendTelegramMsg(text) {
   }
 }
 
-// আজকের তারিখ পাওয়ার লজিক (YYYY-MM-DD)
 function getTodayDate() {
   const today = new Date();
   return today.toISOString().split('T')[0];
@@ -59,9 +59,9 @@ function getTodayDate() {
 
 async function runDailyAutomation() {
   const todayDate = getTodayDate();
-  const patientsList = generatePatients(7); // মোট ৭টি সিরিয়াল জেনারেট করা হলো
+  const patientsList = generatePatients(7);
 
-  await sendTelegramMsg(`🚀 *Daily Auto Serial Engine Started!*\n📅 *Date:* ${todayDate}\n👥 *Total Target Serials:* 7`);
+  await sendTelegramMsg(`🚀 *Daily Auto Serial Engine Started!*\n📍 *Chamber ID:* ${CHAMBER_ID}\n📅 *Date:* ${todayDate}\n👥 *Total Target Serials:* 7`);
 
   for (let i = 0; i < patientsList.length; i++) {
     const patient = patientsList[i];
@@ -69,7 +69,7 @@ async function runDailyAutomation() {
 
     try {
       const postData = qs.stringify({
-        'averageTime': '5',
+        'averageTime': AVERAGE_TIME,
         'contact2': '28, Doyagonj,Gandaria',
         'chamber_id': CHAMBER_ID,
         'appointment_date': todayDate,
@@ -122,7 +122,6 @@ async function runDailyAutomation() {
       await sendTelegramMsg(`❌ *Job ${serialJobNum} Error:* ${error.message}`);
     }
 
-    // প্রতিটি সিরিয়ালের মাঝে ১ মিনিটের বিরতি (৬ষ্ঠ সিরিয়াল পর্যন্ত)
     if (i < patientsList.length - 1) {
       await new Promise(res => setTimeout(res, 60000));
     }
