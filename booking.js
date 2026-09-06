@@ -8,7 +8,7 @@ const CONFIG = {
   url: 'http://210.4.73.10:52/appointments/apps/appointment/1424/13000',
   intervalMinutes: 1,
   patients: [
-    { name: "Md Rahim", phone: "01947673671", type: "New", gender: "Male" },
+    { name: "Md Rahim", phone: "01700000001", type: "New", gender: "Male" },
     { name: "Md Karim", phone: "01800000002", type: "New", gender: "Male" },
     { name: "Sultana Begum", phone: "01900000003", type: "Old", gender: "Female" },
     { name: "Rafiqul Islam", phone: "01700000004", type: "New", gender: "Male" },
@@ -44,6 +44,9 @@ async function sendTelegramPhoto(imageBuffer, caption) {
   }
 }
 
+// প্রতিটি স্টেপের আগে ১.৫ সেকেন্ড বিরতি নেওয়ার হেলপার ফাংশন
+const delayStep = () => new Promise(res => setTimeout(res, 1500));
+
 async function runBooking() {
   await sendTelegramMsg(`🤖 *Auto Serial Booking Started!*\n\n📍 *Link:* ${CONFIG.url}\n👥 *Total Patients:* ${CONFIG.patients.length}`);
 
@@ -60,17 +63,17 @@ async function runBooking() {
 
     try {
       await page.goto(CONFIG.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForTimeout(4000);
+      await delayStep(); // ১.৫ সেকেন্ড পজ
 
       // ১. নাম ইনপুট
       const nameField = page.locator('input[type="text"]:visible, input[name*="name" i]:visible, input[placeholder*="name" i]:visible').first();
       await nameField.scrollIntoViewIfNeeded();
       await nameField.fill(patient.name);
+      await delayStep(); // ১.৫ সেকেন্ড পজ
 
       // ২. মোবাইল নম্বর ইনপুট
       const phoneField = page.locator('input[type="tel"]:visible, input[name*="mobile" i]:visible, input[name*="phone" i]:visible, input[placeholder*="mobile" i]:visible').first();
       if (await phoneField.count() === 0) {
-        // দ্বিতীয় টেক্সট বক্সে ফোন বসানো
         const allInputs = page.locator('input[type="text"]:visible');
         if (await allInputs.count() >= 2) {
           await allInputs.nth(1).fill(patient.phone);
@@ -78,49 +81,65 @@ async function runBooking() {
       } else {
         await phoneField.fill(patient.phone);
       }
+      await delayStep(); // ১.৫ সেকেন্ড পজ
 
-      // ৩. টাইপ ও জেন্ডার সিলেক্ট (New/Old, Male/Female)
+      // ৩. টাইপ ও জেন্ডার সিলেক্ট (ড্রপডাউন অপশন নির্বাচন)
       const selects = page.locator('select:visible');
       const selectCount = await selects.count();
 
+      // ৩.১ টাইপ ড্রপডাউন (New = ২য় অপশন/Index 1, Old = ৩য় অপশন/Index 2)
       if (selectCount >= 1) {
-        await selects.nth(0).selectOption({ label: patient.type }).catch(async () => {
-          await selects.nth(0).selectOption({ value: patient.type }).catch(() => {});
-        });
+        const typeSelect = selects.nth(0);
+        try {
+          if (patient.type.toLowerCase() === "new") {
+            await typeSelect.selectOption({ index: 1 }); // ২ নম্বর অপশন সিলেক্ট করবে
+          } else if (patient.type.toLowerCase() === "old") {
+            await typeSelect.selectOption({ index: 2 }); // ৩ নম্বর অপশন সিলেক্ট করবে
+          } else {
+            await typeSelect.selectOption({ label: patient.type });
+          }
+        } catch (e) {
+          await typeSelect.selectOption({ label: patient.type }).catch(() => {});
+        }
       }
+      await delayStep(); // ১.৫ সেকেন্ড পজ
 
+      // ৩.২ জেন্ডার ড্রপডাউন (Male / Female)
       if (selectCount >= 2) {
-        await selects.nth(1).selectOption({ label: patient.gender }).catch(async () => {
-          await selects.nth(1).selectOption({ value: patient.gender }).catch(() => {});
-        });
+        const genderSelect = selects.nth(1);
+        try {
+          await genderSelect.selectOption({ label: patient.gender });
+        } catch (e) {
+          if (patient.gender.toLowerCase() === "male") {
+            await genderSelect.selectOption({ index: 1 });
+          } else {
+            await genderSelect.selectOption({ index: 2 });
+          }
+        }
       }
-
-      await page.waitForTimeout(1000);
+      await delayStep(); // ১.৫ সেকেন্ড পজ
 
       // ৪. সাবমিট বাটন ক্লিক
       const submitBtn = page.locator('button[type="submit"]:visible, input[type="submit"]:visible, button:has-text("Submit"):visible, button:has-text("Save"):visible, .btn-primary:visible').first();
       await submitBtn.click();
 
-      // ৫. রেজাল্ট সেকশন লোড হওয়ার জন্য ৫ সেকেন্ড অপেক্ষা
+      // ৫. রেজাল্ট পেজ সম্পূর্ণ লোড হওয়ার জন্য ৫ সেকেন্ড অপেক্ষা
       await page.waitForTimeout(5000);
 
-      // ৬. পেজ থেকে সিরিয়াল ইনফরমেশন ও রেজাল্ট ক্যাপচার করা
+      // ৬. পেজ থেকে টেক্সট এক্সট্র্যাক্ট করা
       const pageText = await page.innerText('body');
       let extractedSerial = "Not Detected";
       let confirmationText = "";
 
-      // 'Serial:' এর পর থেকে সিরিয়াল নম্বর এক্সট্র্যাক্ট করা
       const serialMatch = pageText.match(/Serial:\s*(\d+)/i);
       if (serialMatch && serialMatch[1]) {
         extractedSerial = serialMatch[1];
       }
 
-      // Appointment successfully created সেকশনের ফুল মেসেজ বের করা
       const resultMatch = pageText.match(/Appointment successfully created[\s\S]*?(?=Hotkey|Hotline|New Apps|$)/i);
       if (resultMatch) {
         confirmationText = resultMatch[0].trim();
       } else {
-        // অল্টারনেটিভ মেসেজ স্ট্রাকচার
         const appointmentMatch = pageText.match(/Appointment\s+[^\n]+/i);
         if (appointmentMatch) {
           confirmationText = appointmentMatch[0].trim();
@@ -129,7 +148,7 @@ async function runBooking() {
 
       const screenshot = await page.screenshot({ fullPage: true });
 
-      // ৭. টেলিগ্রামে রেজাল্ট ও এক্সট্র্যাক্ট করা সিরিয়াল পাঠানো
+      // ৭. টেলিগ্রাম মেসেজ পাঠানো
       const captionMsg = `✅ *Job ${serialJobNum} Successful!*\n\n` +
         `👤 *Patient:* ${patient.name}\n` +
         `📞 *Phone:* ${patient.phone}\n` +
@@ -147,7 +166,7 @@ async function runBooking() {
       }
     }
 
-    // ১ মিনিট মেপে বিরতি (শেষ রোগীর জন্য প্রযোজ্য নয়)
+    // ১ মিনিট পর পর পরবর্তী রোগীর সিরিয়াল নেওয়া
     if (i < CONFIG.patients.length - 1) {
       await new Promise(res => setTimeout(res, CONFIG.intervalMinutes * 60000));
     }
