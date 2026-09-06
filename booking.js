@@ -5,10 +5,10 @@ const BOT_TOKEN = '8993447347:AAHjIP5P5XOoTqyRyP2nV5b_sEtZC_U7qoE';
 const CHAT_ID = '8932051360';
 
 const CONFIG = {
-  url: 'http://210.4.73.10:52/appointments/apps/appointment/1460/13030',
+  url: 'http://210.4.73.10:52/appointments/apps/appointment/1460/12999',
   intervalMinutes: 1,
   patients: [
-    { name: "Md Rahim", phone: "01700000001", type: "New", gender: "Male" },
+    { name: "Md Rahim", phone: "01947673671", type: "New", gender: "Male" },
     { name: "Md Karim", phone: "01800000002", type: "New", gender: "Male" },
     { name: "Sultana Begum", phone: "01900000003", type: "Old", gender: "Female" },
     { name: "Rafiqul Islam", phone: "01700000004", type: "New", gender: "Male" },
