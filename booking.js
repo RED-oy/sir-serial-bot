@@ -4,16 +4,18 @@ const qs = require('qs');
 const BOT_TOKEN = '8993447347:AAHjIP5P5XOoTqyRyP2nV5b_sEtZC_U7qoE';
 const CHAT_ID = '8932051360';
 
-// নতুন ডাক্তারের লিংক অনুযায়ী এপিআই ও রেফারার আপডেট করা হয়েছে
+// API Configurations
 const API_URL = 'http://210.4.73.10:52/appointments/trust_apt_pub/appointment';
 const PAGE_URL = 'http://210.4.73.10:52/appointments/apps/appointment/1427/13003';
-const CHAMBER_ID = '1427'; // নতুন ডাক্তারের চেম্বার আইডি
+const CHAMBER_ID = '1427';
+
+// Testing-এর জন্য আপনার দেওয়া কাস্টম তারিখ (২০২৬-০৯-০৮) এবং নম্বর সেট করা হলো
+const TARGET_DATE = '2026-09-08'; 
 
 const CONFIG = {
   intervalMinutes: 1,
   patients: [
-    { name: "Rabbi", phone: "01927375671" },
-    { name: "Ayesha Khatun", phone: "01947673671" }
+    { name: "Rabbi", phone: "01947673671" } // কনফার্মেশনের জন্য আপনার আসল মোবাইল নম্বর
   ]
 };
 
@@ -29,27 +31,8 @@ async function sendTelegramMsg(text) {
   }
 }
 
-// HTML থেকে ক্লিন টেক্সট বের করার ফাংশন
-function cleanHtmlText(html) {
-  return html
-    .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '')
-    .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '')
-    .replace(/<[^>]+>/g, '\n')
-    .replace(/\n\s*\n/g, '\n')
-    .trim();
-}
-
-// অ্যাপয়েন্টমেন্টের তারিখ বের করার লজিক (আগামীকালের তারিখ)
-function getAppointmentDate() {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toISOString().split('T')[0];
-}
-
-async function runDirectBooking() {
-  await sendTelegramMsg(`🚀 *Direct API Booking Started for Doctor 1427!*\n\n📍 *Link:* ${PAGE_URL}`);
-
-  const aptDate = getAppointmentDate();
+async function runRealApiBooking() {
+  await sendTelegramMsg(`🚀 *100% Real API Booking Engine Started!*`);
 
   for (let i = 0; i < CONFIG.patients.length; i++) {
     const patient = CONFIG.patients[i];
@@ -59,13 +42,14 @@ async function runDirectBooking() {
       const postData = qs.stringify({
         'averageTime': '5',
         'contact2': '28, Doyagonj,Gandaria',
-        'chamber_id': CHAMBER_ID, // আপডেটকৃত চেম্বার আইডি
-        'appointment_date': aptDate,
+        'chamber_id': CHAMBER_ID,
+        'appointment_date': TARGET_DATE,
         'pat_name': patient.name,
         'pat_contact': patient.phone,
         'sample': ''
       });
 
+      // আসল ব্যাকএন্ড রিকোয়েস্ট
       const response = await axios.post(API_URL, postData, {
         headers: {
           'Host': '210.4.73.10:52',
@@ -81,55 +65,42 @@ async function runDirectBooking() {
         }
       });
 
-      const rawHtml = typeof response.data === 'object' ? JSON.stringify(response.data) : String(response.data);
-      const cleanText = cleanHtmlText(rawHtml);
+      const resData = response.data;
 
-      // সফলতা যাচাই
-      if (rawHtml.includes("Appointment successfully created") || rawHtml.includes("Serial:")) {
+      // আসল JSON রেসপন্স পার্সিং
+      if (resData && (resData.apt_status === true || resData.status === 200) && resData.message) {
         
-        let serialNo = "Not Found";
-        const serialMatch = cleanText.match(/Serial:\s*(\d+)/i);
-        if (serialMatch && serialMatch[1]) {
-          serialNo = serialMatch[1];
-        }
-
-        let fullAppointmentMsg = "";
-        const msgMatch = cleanText.match(/Appointment Doyagonj[\s\S]*?(?=Hotline|New Apps|$)/i);
-        if (msgMatch) {
-          fullAppointmentMsg = msgMatch[0].replace(/\n+/g, ' ').trim();
-        } else {
-          const generalMatch = cleanText.match(/Appointment successfully created[\s\S]*?(?=Hotline|$)/i);
-          if (generalMatch) fullAppointmentMsg = generalMatch[0].replace(/\n+/g, ' ').trim();
-        }
+        const details = resData.message;
+        const serialNo = details.serial || 'N/A';
+        const roomNo = details.roomNo || 'N/A';
+        const doctorName = details.nickName || 'Dr.';
+        const timeSlot = details.Time || '';
+        const msgFormat = details.messageFormat || '';
 
         const telegramMessage = 
-          `✅ *Appointment Successfully Created!*\n\n` +
-          `👤 *Patient:* ${patient.name}\n` +
-          `📞 *Phone:* ${patient.phone}\n` +
-          `🎫 *Serial Number:* \`${serialNo}\`\n\n` +
-          `📝 *Full Confirmation Message:*\n` +
-          `\`\`\`\n` +
-          `Appointment Form\n` +
-          `Appointment successfully created.\n` +
-          `May Allah keep you healthy.\n\n` +
-          `${fullAppointmentMsg || "Appointment details processed."}\n` +
-          `\`\`\``;
+          `✅ *REAL APPOINTMENT SUCCESSFUL!*\n\n` +
+          `👤 *Patient Name:* ${patient.name}\n` +
+          `📞 *Phone Number:* \`${patient.phone}\`\n` +
+          `🎫 *Serial Number:* \`${serialNo}\`\n` +
+          `🚪 *Room No:* ${roomNo}\n` +
+          `⏰ *Time Slot:* ${timeSlot}\n` +
+          `📅 *Date:* ${TARGET_DATE}\n\n` +
+          `💬 *Server Confirmation SMS Text:*\n` +
+          `\`\`\`\n${msgFormat}\n\`\`\``;
 
         await sendTelegramMsg(telegramMessage);
 
-      } else if (rawHtml.includes("Problems")) {
-        await sendTelegramMsg(
-          `❌ *Job ${serialJobNum} Failed for ${patient.name}*\n\n` +
-          `⚠️ *Result:* Problems (Serial Full or Booking Closed)`
-        );
       } else {
+        // স্লট না থাকলে বা সার্ভার রিজেক্ট করলে
+        const errorMsg = typeof resData === 'object' ? JSON.stringify(resData) : String(resData);
         await sendTelegramMsg(
-          `ℹ️ *Job ${serialJobNum} Response:*\n\`\`\`\n${cleanText.slice(0, 300)}\n\`\`\``
+          `❌ *Booking Failed for ${patient.name}*\n\n` +
+          `⚠️ *Server Response:* \`\`\`${errorMsg}\`\`\``
         );
       }
 
     } catch (error) {
-      await sendTelegramMsg(`❌ *Job ${serialJobNum} Error:* ${error.message}`);
+      await sendTelegramMsg(`❌ *Job ${serialJobNum} Network Error:* ${error.message}`);
     }
 
     if (i < CONFIG.patients.length - 1) {
@@ -137,7 +108,7 @@ async function runDirectBooking() {
     }
   }
 
-  await sendTelegramMsg(`🎉 *All 5 Appointments Executed!*`);
+  await sendTelegramMsg(`🎉 *Test Appointment Execution Complete!*`);
 }
 
-runDirectBooking();
+runRealApiBooking();
