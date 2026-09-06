@@ -5,7 +5,7 @@ const BOT_TOKEN = '8993447347:AAHjIP5P5XOoTqyRyP2nV5b_sEtZC_U7qoE';
 const CHAT_ID = '8932051360';
 
 const CONFIG = {
-  url: 'http://210.4.73.10:52/appointments/apps/appointment/1460/12999',
+  url: 'http://210.4.73.10:52/appointments/apps/appointment/1424/13000',
   intervalMinutes: 1,
   patients: [
     { name: "Md Rahim", phone: "01947673671", type: "New", gender: "Male" },
@@ -47,7 +47,6 @@ async function sendTelegramPhoto(imageBuffer, caption) {
 async function runBooking() {
   await sendTelegramMsg(`🤖 *Auto Serial Booking Started!*\n\n📍 *Link:* ${CONFIG.url}`);
 
-  // ব্রাউজার রেজোলিউশন সঠিক করে দেওয়া হয়েছে যেন স্ক্রিনশট সাদা/ব্ল্যাংক না আসে
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 820 },
@@ -60,44 +59,42 @@ async function runBooking() {
     const serialNum = i + 1;
 
     try {
-      // ১. পেজ লোড হওয়া পর্যন্ত অপেক্ষা
       await page.goto(CONFIG.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForTimeout(5000); // পেজের জাভাস্ক্রিপ্ট লোড হওয়ার জন্য ৫ সেকেন্ড পজ
+      await page.waitForTimeout(3000);
 
-      // ২. ইনপুট ফিল্ড দৃশ্যমান না হওয়া পর্যন্ত ওয়েট করা
-      const inputField = page.locator('input').first();
-      await inputField.waitFor({ state: 'visible', timeout: 20000 });
+      // হিডেন ফিল্ড এড়িয়ে দৃশ্যমান ইনপুটের জন্য অপেক্ষা
+      const visibleInput = page.locator('input:visible').first();
+      await visibleInput.waitFor({ state: 'visible', timeout: 20000 });
 
-      // ৩. ফর্ম পূরণ (সরাসরি ফিল্ড খুঁজে টাইপ করা)
-      const inputs = await page.$$('input[type="text"], input[type="tel"], input:not([type])');
-      if (inputs.length >= 2) {
-        await inputs[0].fill(patient.name);
-        await inputs[1].fill(patient.phone);
+      // দৃশ্যমান ইনপুট ফিল্ডে টাইপ করা
+      const inputs = page.locator('input:visible');
+      const inputCount = await inputs.count();
+
+      if (inputCount >= 2) {
+        await inputs.nth(0).fill(patient.name);
+        await inputs.nth(1).fill(patient.phone);
       } else {
-        await page.fill('input[name*="name" i], input[placeholder*="name" i]', patient.name);
-        await page.fill('input[name*="mobile" i], input[placeholder*="mobile" i]', patient.phone);
+        await page.locator('input[name*="name" i]:visible, input[placeholder*="name" i]:visible').first().fill(patient.name);
+        await page.locator('input[name*="mobile" i]:visible, input[placeholder*="mobile" i]:visible').first().fill(patient.phone);
       }
 
-      // ৪. টাইপ এবং জেন্ডার ড্রপডাউন সিলেক্ট
-      const selects = await page.$$('select');
-      if (selects.length >= 2) {
-        await selects[0].selectOption({ label: patient.type }).catch(() => {});
-        await selects[1].selectOption({ label: patient.gender }).catch(() => {});
+      // ড্রপডাউন সিলেক্ট
+      const visibleSelects = page.locator('select:visible');
+      const selectCount = await visibleSelects.count();
+      if (selectCount >= 2) {
+        await visibleSelects.nth(0).selectOption({ label: patient.type }).catch(() => {});
+        await visibleSelects.nth(1).selectOption({ label: patient.gender }).catch(() => {});
       }
 
       await page.waitForTimeout(1000);
 
-      // ৫. সাবমিট করার আগের পেজের স্ক্রিনশট (ফর্ম ফিলআপ ঠিকমত হয়েছে কিনা দেখার জন্য)
-      const filledScreenshot = await page.screenshot({ fullPage: true });
-
-      // ৬. সাবমিট বাটন ক্লিক
-      const submitBtn = page.locator('button[type="submit"], input[type="submit"], button:has-text("Submit"), button:has-text("Save"), .btn-primary').first();
+      // সাবমিট বাটন ক্লিক
+      const submitBtn = page.locator('button[type="submit"]:visible, input[type="submit"]:visible, button:has-text("Submit"):visible, button:has-text("Save"):visible, .btn-primary:visible').first();
       await submitBtn.click();
 
-      // ৭. সাবমিট হওয়ার পর রেজাল্ট আসাল পর্যন্ত ৫ সেকেন্ড ওয়েট
+      // রেজাল্ট আসা পর্যন্ত অপেক্ষা
       await page.waitForTimeout(5000);
 
-      // ৮. চূড়ান্ত কনফার্মেশন স্ক্রিনশট
       const finalScreenshot = await page.screenshot({ fullPage: true });
 
       await sendTelegramPhoto(
