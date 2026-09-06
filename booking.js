@@ -4,14 +4,12 @@ const axios = require('axios');
 const BOT_TOKEN = '8993447347:AAHjIP5P5XOoTqyRyP2nV5b_sEtZC_U7qoE';
 const CHAT_ID = '8932051360';
 
+// নতুন টেস্ট লিংক বসানো হলো
 const CONFIG = {
   url: 'http://210.4.73.10:52/appointments/apps/appointment/1424/13000',
   intervalMinutes: 1,
   patients: [
     { name: "Md Rahim", phone: "01700000001", type: "New", gender: "Male" },
-    { name: "Md Karim", phone: "01800000002", type: "New", gender: "Male" },
-    { name: "Sultana Begum", phone: "01900000003", type: "Old", gender: "Female" },
-    { name: "Rafiqul Islam", phone: "01700000004", type: "New", gender: "Male" },
     { name: "Ayesha Khatun", phone: "01500000005", type: "Old", gender: "Female" }
   ]
 };
@@ -33,7 +31,7 @@ async function sendTelegramPhoto(imageBuffer, caption) {
     const FormData = require('form-data');
     const form = new FormData();
     form.append('chat_id', CHAT_ID);
-    form.append('photo', imageBuffer, { filename: 'screenshot.png' });
+    form.append('photo', imageBuffer, { filename: 'step.png' });
     form.append('caption', caption);
 
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, form, {
@@ -47,7 +45,7 @@ async function sendTelegramPhoto(imageBuffer, caption) {
 const delayStep = () => new Promise(res => setTimeout(res, 1500));
 
 async function runBooking() {
-  await sendTelegramMsg(`🤖 *Auto Serial Booking Started!*\n\n📍 *Link:* ${CONFIG.url}\n👥 *Total Patients:* ${CONFIG.patients.length}`);
+  await sendTelegramMsg(`🤖 *Step-by-Step Debug Booking Started!*\n\n📍 *Link:* ${CONFIG.url}`);
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -61,16 +59,18 @@ async function runBooking() {
     const serialJobNum = i + 1;
 
     try {
+      // Step 1: পেজে প্রবেশ
       await page.goto(CONFIG.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await delayStep();
+      const step1Pic = await page.screenshot({ fullPage: true });
+      await sendTelegramPhoto(step1Pic, `📸 *Job ${serialJobNum} - Step 1:* Page Loaded`);
 
-      // ১. নাম ফিলআপ
+      // Step 2: নাম ও মোবাইল নম্বর টাইপ
       const nameField = page.locator('input[type="text"]:visible, input[name*="name" i]:visible').first();
       await nameField.scrollIntoViewIfNeeded();
       await nameField.fill(patient.name);
       await delayStep();
 
-      // ২. মোবাইল ফিলআপ
       const phoneField = page.locator('input[type="tel"]:visible, input[name*="mobile" i]:visible, input[name*="phone" i]:visible').first();
       if (await phoneField.count() === 0) {
         const allInputs = page.locator('input[type="text"]:visible');
@@ -81,8 +81,11 @@ async function runBooking() {
         await phoneField.fill(patient.phone);
       }
       await delayStep();
+      
+      const step2Pic = await page.screenshot({ fullPage: true });
+      await sendTelegramPhoto(step2Pic, `📸 *Job ${serialJobNum} - Step 2:* Name & Phone Filled`);
 
-      // ৩. টাইপ ও জেন্ডার ফিলআপ
+      // Step 3: টাইপ ও জেন্ডার সিলেক্ট
       const selects = page.locator('select:visible');
       const selectCount = await selects.count();
 
@@ -106,58 +109,36 @@ async function runBooking() {
       }
       await delayStep();
 
-      // ৪. সাবমিট বাটন ক্লিক
+      const step3Pic = await page.screenshot({ fullPage: true });
+      await sendTelegramPhoto(step3Pic, `📸 *Job ${serialJobNum} - Step 3:* Type & Gender Selected`);
+
+      // Step 4: সাবমিট বাটন ক্লিক
       const submitBtn = page.locator('button[type="submit"]:visible, input[type="submit"]:visible, button:has-text("Submit"):visible').first();
       await submitBtn.click();
-
-      // ৫. রেজাল্ট পেজ লোডের অপেক্ষা
       await page.waitForTimeout(4000);
 
-      // ৬. রেজাল্ট ভ্যালিডেশন চেক
+      // ফাইনাল ভ্যালিডেশন
       const pageText = await page.innerText('body');
-      const screenshot = await page.screenshot({ fullPage: true });
+      const finalPic = await page.screenshot({ fullPage: true });
 
       const isSuccess = pageText.includes("Appointment successfully created");
-      const hasProblem = pageText.includes("Problems");
 
       if (isSuccess) {
         let extractedSerial = "Not Detected";
-        let confirmationText = "";
-
         const serialMatch = pageText.match(/Serial:\s*(\d+)/i);
-        if (serialMatch && serialMatch[1]) {
-          extractedSerial = serialMatch[1];
-        }
+        if (serialMatch && serialMatch[1]) extractedSerial = serialMatch[1];
 
-        const resultMatch = pageText.match(/Appointment successfully created[\s\S]*?(?=Hotkey|Hotline|New Apps|$)/i);
-        if (resultMatch) {
-          confirmationText = resultMatch[0].trim();
-        }
-
-        const captionMsg = `✅ *Job ${serialJobNum} SUCCESSFUL!*\n\n` +
-          `👤 *Patient:* ${patient.name}\n` +
-          `📞 *Phone:* ${patient.phone}\n` +
-          `🎫 *Serial Number:* \`${extractedSerial}\`\n\n` +
-          `📝 *Message:*\n_${confirmationText || "Appointment Created Successfully"}_`;
-
-        await sendTelegramPhoto(screenshot, captionMsg);
+        await sendTelegramPhoto(finalPic, `✅ *Job ${serialJobNum} SUCCESSFUL!*\n\n👤 *Patient:* ${patient.name}\n🎫 *Serial:* \`${extractedSerial}\``);
       } else {
-        const failReason = hasProblem ? "Site returned 'Problems' (No slots available or invalid data)" : "Form Submission Failed";
-        
-        const captionMsg = `❌ *Job ${serialJobNum} FAILED!*\n\n` +
-          `👤 *Patient:* ${patient.name}\n` +
-          `📞 *Phone:* ${patient.phone}\n` +
-          `⚠️ *Reason:* ${failReason}`;
-
-        await sendTelegramPhoto(screenshot, captionMsg);
+        await sendTelegramPhoto(finalPic, `❌ *Job ${serialJobNum} FAILED!*\n\n👤 *Patient:* ${patient.name}\n⚠️ *Result:* Problems / Slot Full`);
       }
 
     } catch (error) {
-      const errScreenshot = await page.screenshot({ fullPage: true }).catch(() => null);
-      if (errScreenshot) {
-        await sendTelegramPhoto(errScreenshot, `❌ *Job ${serialJobNum} Error for ${patient.name}*\n\n*Error:* ${error.message}`);
+      const errPic = await page.screenshot({ fullPage: true }).catch(() => null);
+      if (errPic) {
+        await sendTelegramPhoto(errPic, `❌ *Job ${serialJobNum} Crash Error:* ${error.message}`);
       } else {
-        await sendTelegramMsg(`❌ *Job ${serialJobNum} Error for ${patient.name}*\n\n*Error:* ${error.message}`);
+        await sendTelegramMsg(`❌ *Job ${serialJobNum} Crash Error:* ${error.message}`);
       }
     }
 
@@ -167,7 +148,7 @@ async function runBooking() {
   }
 
   await browser.close();
-  await sendTelegramMsg(`🎉 *All 5 Appointment Jobs Processed!*`);
+  await sendTelegramMsg(`🎉 *Debug Workflow Completed!*`);
 }
 
 runBooking();
