@@ -58,7 +58,6 @@ async function runPerfectBooking() {
 
   const aptDate = getAppointmentDate();
 
-  // স্ক্রিনশটের জন্য ব্যাকগ্রাউন্ডে ব্রাউজার প্রস্তুত রাখা
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 850 } });
   const page = await context.newPage();
@@ -68,7 +67,6 @@ async function runPerfectBooking() {
     const serialJobNum = i + 1;
 
     try {
-      // ১. x-www-form-urlencoded ডাটা তৈরি
       const postData = qs.stringify({
         'averageTime': '5',
         'contact2': '28, Doyagonj,Gandaria',
@@ -79,7 +77,6 @@ async function runPerfectBooking() {
         'sample': ''
       });
 
-      // ২. সরাসরি আসল API রিকোয়েস্ট পাঠানো
       const response = await axios.post(API_URL, postData, {
         headers: {
           'Host': '210.4.73.10:52',
@@ -95,14 +92,17 @@ async function runPerfectBooking() {
         }
       });
 
-      const responseHtml = response.data;
+      // রেসপন্স অবজেক্ট হলে তাকে স্ট্রিংয়ে রূপান্তর (Fix for .includes issue)
+      const responseHtml = typeof response.data === 'object' 
+        ? JSON.stringify(response.data) 
+        : String(response.data);
 
-      // ৩. একই সাথে রেজাল্টের স্ক্রিনশট নেওয়ার জন্য পেজ লোড করা
+      // রেজাল্ট পেজের স্ক্রিনশট নেওয়া
       await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.waitForTimeout(2000);
       const screenshot = await page.screenshot({ fullPage: true });
 
-      // ৪. রেসপন্স ভ্যালিডেশন
+      // কনফার্মেশন যাচাই
       if (responseHtml.includes("Appointment successfully created") || responseHtml.includes("Serial:")) {
         
         let serialNo = "Detected";
@@ -118,7 +118,6 @@ async function runPerfectBooking() {
         await sendTelegramPhoto(screenshot, caption);
 
       } else {
-        // স্লট না থাকলে বা Problems আসলে
         const caption = `❌ *Job ${serialJobNum} FAILED / SLOT FULL*\n\n` +
           `👤 *Name:* ${patient.name}\n` +
           `📞 *Phone:* ${patient.phone}\n` +
