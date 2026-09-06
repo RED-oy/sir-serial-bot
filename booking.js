@@ -44,46 +44,15 @@ async function sendTelegramPhoto(imageBuffer, caption) {
   }
 }
 
-async function fillSmartField(page, patient) {
-  // ১. নাম ইনপুট
-  const nameInput = page.locator('input[name*="name" i], input[placeholder*="name" i], input[type="text"]').first();
-  await nameInput.fill(patient.name);
-
-  // ২. মোবাইল ইনপুট
-  const phoneInput = page.locator('input[name*="mobile" i], input[name*="phone" i], input[placeholder*="mobile" i], input[type="tel"]').first();
-  await phoneInput.fill(patient.phone);
-
-  // ৩. টাইপ সিলেক্ট (New / Old) - ড্রপডাউন বা সিলেক্ট ফিল্ড
-  try {
-    const typeSelect = page.locator('select').filter({ hasText: /new|old|type/i }).first();
-    if (await typeSelect.isVisible({ timeout: 2000 })) {
-      await typeSelect.selectOption({ label: patient.type });
-    } else {
-      await page.click(`text="${patient.type}"`);
-    }
-  } catch (e) {
-    // যদি ড্রপডাউন না পাওয়া যায় তবে টেক্সট বা রেডিও বাটনে ক্লিক করবে
-    await page.locator(`label:has-text("${patient.type}"), input[value*="${patient.type}" i]`).first().click();
-  }
-
-  // ৪. জেন্ডার সিলেক্ট (Male / Female)
-  try {
-    const genderSelect = page.locator('select').filter({ hasText: /male|female|gender/i }).first();
-    if (await genderSelect.isVisible({ timeout: 2000 })) {
-      await genderSelect.selectOption({ label: patient.gender });
-    } else {
-      await page.click(`text="${patient.gender}"`);
-    }
-  } catch (e) {
-    await page.locator(`label:has-text("${patient.gender}"), input[value*="${patient.gender}" i]`).first().click();
-  }
-}
-
 async function runBooking() {
-  await sendTelegramMsg(`🤖 *Auto Serial Booking Started!*\n\n📍 *Link:* ${CONFIG.url}\n👥 *Total Patients:* ${CONFIG.patients.length}`);
+  await sendTelegramMsg(`🤖 *Auto Serial Booking Started!*\n\n📍 *Link:* ${CONFIG.url}`);
 
+  // ব্রাউজার রেজোলিউশন সঠিক করে দেওয়া হয়েছে যেন স্ক্রিনশট সাদা/ব্ল্যাংক না আসে
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 820 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  });
   const page = await context.newPage();
 
   for (let i = 0; i < CONFIG.patients.length; i++) {
@@ -91,29 +60,53 @@ async function runBooking() {
     const serialNum = i + 1;
 
     try {
-      await page.goto(CONFIG.url, { waitUntil: 'networkidle', timeout: 45000 });
+      // ১. পেজ লোড হওয়া পর্যন্ত অপেক্ষা
+      await page.goto(CONFIG.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForTimeout(5000); // পেজের জাভাস্ক্রিপ্ট লোড হওয়ার জন্য ৫ সেকেন্ড পজ
 
-      // নতুন স্মার্ট ফিলিং ফাংশন কল
-      await fillSmartField(page, patient);
+      // ২. ইনপুট ফিল্ড দৃশ্যমান না হওয়া পর্যন্ত ওয়েট করা
+      const inputField = page.locator('input').first();
+      await inputField.waitFor({ state: 'visible', timeout: 20000 });
 
-      // সাবমিট বাটন খুঁজে ক্লিক করা
-      const submitBtn = page.locator('button[type="submit"], input[type="submit"], button:has-text("Submit"), button:has-text("Save")').first();
+      // ৩. ফর্ম পূরণ (সরাসরি ফিল্ড খুঁজে টাইপ করা)
+      const inputs = await page.$$('input[type="text"], input[type="tel"], input:not([type])');
+      if (inputs.length >= 2) {
+        await inputs[0].fill(patient.name);
+        await inputs[1].fill(patient.phone);
+      } else {
+        await page.fill('input[name*="name" i], input[placeholder*="name" i]', patient.name);
+        await page.fill('input[name*="mobile" i], input[placeholder*="mobile" i]', patient.phone);
+      }
+
+      // ৪. টাইপ এবং জেন্ডার ড্রপডাউন সিলেক্ট
+      const selects = await page.$$('select');
+      if (selects.length >= 2) {
+        await selects[0].selectOption({ label: patient.type }).catch(() => {});
+        await selects[1].selectOption({ label: patient.gender }).catch(() => {});
+      }
+
+      await page.waitForTimeout(1000);
+
+      // ৫. সাবমিট করার আগের পেজের স্ক্রিনশট (ফর্ম ফিলআপ ঠিকমত হয়েছে কিনা দেখার জন্য)
+      const filledScreenshot = await page.screenshot({ fullPage: true });
+
+      // ৬. সাবমিট বাটন ক্লিক
+      const submitBtn = page.locator('button[type="submit"], input[type="submit"], button:has-text("Submit"), button:has-text("Save"), .btn-primary').first();
       await submitBtn.click();
-      
-      await page.waitForTimeout(4000);
 
-      // স্ক্রিনশট ক্যাপচার
-      const screenshot = await page.screenshot({ fullPage: false });
-      
+      // ৭. সাবমিট হওয়ার পর রেজাল্ট আসাল পর্যন্ত ৫ সেকেন্ড ওয়েট
+      await page.waitForTimeout(5000);
+
+      // ৮. চূড়ান্ত কনফার্মেশন স্ক্রিনশট
+      const finalScreenshot = await page.screenshot({ fullPage: true });
+
       await sendTelegramPhoto(
-        screenshot,
+        finalScreenshot,
         `✅ *Serial ${serialNum} Processed!*\n\n👤 *Name:* ${patient.name}\n📞 *Phone:* ${patient.phone}\n🏷️ *Type:* ${patient.type} | *Gender:* ${patient.gender}`
       );
 
     } catch (error) {
-      // ব্যর্থ হলেও এরর এর সময় স্ক্রিনশট নিবে যেন বোঝা যায় সমস্যা কোথায়
-      const errScreenshot = await page.screenshot({ fullPage: false }).catch(() => null);
-      
+      const errScreenshot = await page.screenshot({ fullPage: true }).catch(() => null);
       if (errScreenshot) {
         await sendTelegramPhoto(errScreenshot, `❌ *Serial ${serialNum} Failed for ${patient.name}*\n\n*Error:* ${error.message}`);
       } else {
