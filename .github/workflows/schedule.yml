@@ -1,8 +1,9 @@
-name: Daily Automatic Serial Booking
+name: Daily Auto Doctor Serial Booking
 
 on:
   schedule:
-    - cron: '5 1 * * *' # প্রতিদিন বাংলাদেশ সময় সকাল ৭:০৫ AM এ রান হবে
+    # বাংলাদেশ সময় সকাল 07:04 AM = UTC সময় 01:04 AM
+    - cron: '4 1 * * *'
   workflow_dispatch:
 
 jobs:
@@ -19,9 +20,7 @@ jobs:
           node-version: '24'
 
       - name: Install Dependencies
-        run: |
-          npm install
-          npx playwright install chromium
+        run: npm install
 
       - name: Run Serial Automation
         run: node booking.js
