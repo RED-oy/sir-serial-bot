@@ -7,7 +7,7 @@ const CHAT_ID = '8932051360';
 
 // ডিফল্ট সেটআপ
 const CONFIG = {
-  url: 'http://210.4.73.10:52/appointments/apps/appointment/1460/13030',
+  url: 'http://210.4.73.10:52/appointments/apps/appointment/1460/12999',
   intervalMinutes: 1, // ১ মিনিট পর পর
   patients: [
     { name: "Md Rahim", phone: "01700000001", type: "New", gender: "Male" },
