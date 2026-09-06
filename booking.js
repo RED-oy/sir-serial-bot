@@ -1,21 +1,19 @@
 const axios = require('axios');
 const qs = require('qs');
-const { chromium } = require('playwright');
 
 const BOT_TOKEN = '8993447347:AAHjIP5P5XOoTqyRyP2nV5b_sEtZC_U7qoE';
 const CHAT_ID = '8932051360';
 
+// নতুন ডাক্তারের লিংক অনুযায়ী এপিআই ও রেফারার আপডেট করা হয়েছে
 const API_URL = 'http://210.4.73.10:52/appointments/trust_apt_pub/appointment';
-const PAGE_URL = 'http://210.4.73.10:52/appointments/apps/appointment/1424/13000';
+const PAGE_URL = 'http://210.4.73.10:52/appointments/apps/appointment/1427/13003';
+const CHAMBER_ID = '1427'; // নতুন ডাক্তারের চেম্বার আইডি
 
 const CONFIG = {
   intervalMinutes: 1,
   patients: [
     { name: "Rabbi", phone: "01927375671" },
-    { name: "Md Karim", phone: "01800000002" },
-    { name: "Sultana Begum", phone: "01900000003" },
-    { name: "Rafiqul Islam", phone: "01700000004" },
-    { name: "Ayesha Khatun", phone: "01500000005" }
+    { name: "Ayesha Khatun", phone: "01947673671" }
   ]
 };
 
@@ -31,36 +29,27 @@ async function sendTelegramMsg(text) {
   }
 }
 
-async function sendTelegramPhoto(imageBuffer, caption) {
-  try {
-    const FormData = require('form-data');
-    const form = new FormData();
-    form.append('chat_id', CHAT_ID);
-    form.append('photo', imageBuffer, { filename: 'result.png' });
-    form.append('caption', caption);
-
-    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, form, {
-      headers: form.getHeaders()
-    });
-  } catch (err) {
-    console.error("Photo Error:", err.message);
-  }
+// HTML থেকে ক্লিন টেক্সট বের করার ফাংশন
+function cleanHtmlText(html) {
+  return html
+    .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '')
+    .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '')
+    .replace(/<[^>]+>/g, '\n')
+    .replace(/\n\s*\n/g, '\n')
+    .trim();
 }
 
+// অ্যাপয়েন্টমেন্টের তারিখ বের করার লজিক (আগামীকালের তারিখ)
 function getAppointmentDate() {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   return tomorrow.toISOString().split('T')[0];
 }
 
-async function runPerfectBooking() {
-  await sendTelegramMsg(`🚀 *100% Accurate Booking Engine Started!*`);
+async function runDirectBooking() {
+  await sendTelegramMsg(`🚀 *Direct API Booking Started for Doctor 1427!*\n\n📍 *Link:* ${PAGE_URL}`);
 
   const aptDate = getAppointmentDate();
-
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 850 } });
-  const page = await context.newPage();
 
   for (let i = 0; i < CONFIG.patients.length; i++) {
     const patient = CONFIG.patients[i];
@@ -70,7 +59,7 @@ async function runPerfectBooking() {
       const postData = qs.stringify({
         'averageTime': '5',
         'contact2': '28, Doyagonj,Gandaria',
-        'chamber_id': '1424',
+        'chamber_id': CHAMBER_ID, // আপডেটকৃত চেম্বার আইডি
         'appointment_date': aptDate,
         'pat_name': patient.name,
         'pat_contact': patient.phone,
@@ -92,38 +81,51 @@ async function runPerfectBooking() {
         }
       });
 
-      // রেসপন্স অবজেক্ট হলে তাকে স্ট্রিংয়ে রূপান্তর (Fix for .includes issue)
-      const responseHtml = typeof response.data === 'object' 
-        ? JSON.stringify(response.data) 
-        : String(response.data);
+      const rawHtml = typeof response.data === 'object' ? JSON.stringify(response.data) : String(response.data);
+      const cleanText = cleanHtmlText(rawHtml);
 
-      // রেজাল্ট পেজের স্ক্রিনশট নেওয়া
-      await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-      await page.waitForTimeout(2000);
-      const screenshot = await page.screenshot({ fullPage: true });
-
-      // কনফার্মেশন যাচাই
-      if (responseHtml.includes("Appointment successfully created") || responseHtml.includes("Serial:")) {
+      // সফলতা যাচাই
+      if (rawHtml.includes("Appointment successfully created") || rawHtml.includes("Serial:")) {
         
-        let serialNo = "Detected";
-        const serialMatch = responseHtml.match(/Serial:\s*(\d+)/i);
-        if (serialMatch && serialMatch[1]) serialNo = serialMatch[1];
+        let serialNo = "Not Found";
+        const serialMatch = cleanText.match(/Serial:\s*(\d+)/i);
+        if (serialMatch && serialMatch[1]) {
+          serialNo = serialMatch[1];
+        }
 
-        const caption = `✅ *Job ${serialJobNum} SUCCESSFUL!*\n\n` +
-          `👤 *Name:* ${patient.name}\n` +
+        let fullAppointmentMsg = "";
+        const msgMatch = cleanText.match(/Appointment Doyagonj[\s\S]*?(?=Hotline|New Apps|$)/i);
+        if (msgMatch) {
+          fullAppointmentMsg = msgMatch[0].replace(/\n+/g, ' ').trim();
+        } else {
+          const generalMatch = cleanText.match(/Appointment successfully created[\s\S]*?(?=Hotline|$)/i);
+          if (generalMatch) fullAppointmentMsg = generalMatch[0].replace(/\n+/g, ' ').trim();
+        }
+
+        const telegramMessage = 
+          `✅ *Appointment Successfully Created!*\n\n` +
+          `👤 *Patient:* ${patient.name}\n` +
           `📞 *Phone:* ${patient.phone}\n` +
-          `🎫 *Serial Number:* \`${serialNo}\`\n` +
-          `📅 *Date:* ${aptDate}`;
+          `🎫 *Serial Number:* \`${serialNo}\`\n\n` +
+          `📝 *Full Confirmation Message:*\n` +
+          `\`\`\`\n` +
+          `Appointment Form\n` +
+          `Appointment successfully created.\n` +
+          `May Allah keep you healthy.\n\n` +
+          `${fullAppointmentMsg || "Appointment details processed."}\n` +
+          `\`\`\``;
 
-        await sendTelegramPhoto(screenshot, caption);
+        await sendTelegramMsg(telegramMessage);
 
+      } else if (rawHtml.includes("Problems")) {
+        await sendTelegramMsg(
+          `❌ *Job ${serialJobNum} Failed for ${patient.name}*\n\n` +
+          `⚠️ *Result:* Problems (Serial Full or Booking Closed)`
+        );
       } else {
-        const caption = `❌ *Job ${serialJobNum} FAILED / SLOT FULL*\n\n` +
-          `👤 *Name:* ${patient.name}\n` +
-          `📞 *Phone:* ${patient.phone}\n` +
-          `⚠️ *Result:* Problems (No Slot Available or Closed)`;
-
-        await sendTelegramPhoto(screenshot, caption);
+        await sendTelegramMsg(
+          `ℹ️ *Job ${serialJobNum} Response:*\n\`\`\`\n${cleanText.slice(0, 300)}\n\`\`\``
+        );
       }
 
     } catch (error) {
@@ -135,8 +137,7 @@ async function runPerfectBooking() {
     }
   }
 
-  await browser.close();
   await sendTelegramMsg(`🎉 *All 5 Appointments Executed!*`);
 }
 
-runPerfectBooking();
+runDirectBooking();
