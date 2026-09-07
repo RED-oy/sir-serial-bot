@@ -2,9 +2,16 @@ name: Daily Auto Doctor Serial Booking
 
 on:
   schedule:
-    # বাংলাদেশ সময় সকাল 07:04 AM = UTC সময় 01:04 AM
+    # ব্যাকআপ ১: বাংলাদেশ সময় সকাল 07:03 AM (UTC 01:03 AM)
+    - cron: '3 1 * * *'
+    # মূল টার্গেট: বাংলাদেশ সময় সকাল 07:04 AM (UTC 01:04 AM)
     - cron: '4 1 * * *'
   workflow_dispatch:
+
+# একসাথে একাধিক জব ওভারল্যাপ হওয়া বন্ধ করতে
+concurrency:
+  group: doctor-booking-job
+  cancel-in-progress: false
 
 jobs:
   book-serials:
@@ -17,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: 24
 
       - name: Install Dependencies
         run: npm install
