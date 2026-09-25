@@ -1,17 +1,7 @@
-name: Daily Auto Doctor Serial Booking
+name: Schedule Serial Booking
 
 on:
-  schedule:
-    # ব্যাকআপ ১: বাংলাদেশ সময় সকাল 07:03 AM (UTC 01:03 AM)
-    - cron: '3 1 * * *'
-    # মূল টার্গেট: বাংলাদেশ সময় সকাল 07:04 AM (UTC 01:04 AM)
-    - cron: '4 1 * * *'
-  workflow_dispatch:
-
-# একসাথে একাধিক জব ওভারল্যাপ হওয়া বন্ধ করতে
-concurrency:
-  group: doctor-booking-job
-  cancel-in-progress: false
+  workflow_dispatch: # শুধুমাত্র Cron-Job.org বা ম্যানুয়াল ট্র্রিগারে চলবে
 
 jobs:
   book-serials:
@@ -19,15 +9,32 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
-          node-version: 24
+          node-version: '18'
+
+      # আগের জবে বুকিং সফল হয়েছে কিনা তা চেক করার জন্য ক্যাশ ক্যাচ করা
+      - name: Restore Today's Booking State
+        uses: actions/cache@v3
+        with:
+          path: .booking_status.json
+          key: booking-status-${{ runner.os }}-${{ format('{0}', github.event.head_commit.timestamp) }}
+          restore-keys: |
+            booking-status-${{ runner.os }}-
 
       - name: Install Dependencies
         run: npm install
 
-      - name: Run Serial Automation
-        run: node booking.js
+      - name: Run Serial Booking Engine
+        run: node index.js
+
+      # যদি আজ বুকিং সফল হয়ে থাকে তবে সেই স্টেট সেভ করা
+      - name: Save Today's Booking State
+        if: always()
+        uses: actions/cache@v3
+        with:
+          path: .booking_status.json
+          key: booking-status-${{ runner.os }}-${{ github.run_id }}
