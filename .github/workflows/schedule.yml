@@ -1,7 +1,7 @@
 name: Schedule Serial Booking
 
 on:
-  workflow_dispatch: # শুধুমাত্র Cron-Job.org বা ম্যানুয়াল ট্র্রিগারে চলবে
+  workflow_dispatch:
 
 jobs:
   book-serials:
@@ -9,32 +9,15 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
-
-      # আগের জবে বুকিং সফল হয়েছে কিনা তা চেক করার জন্য ক্যাশ ক্যাচ করা
-      - name: Restore Today's Booking State
-        uses: actions/cache@v3
-        with:
-          path: .booking_status.json
-          key: booking-status-${{ runner.os }}-${{ format('{0}', github.event.head_commit.timestamp) }}
-          restore-keys: |
-            booking-status-${{ runner.os }}-
 
       - name: Install Dependencies
         run: npm install
 
       - name: Run Serial Booking Engine
-        run: node index.js
-
-      # যদি আজ বুকিং সফল হয়ে থাকে তবে সেই স্টেট সেভ করা
-      - name: Save Today's Booking State
-        if: always()
-        uses: actions/cache@v3
-        with:
-          path: .booking_status.json
-          key: booking-status-${{ runner.os }}-${{ github.run_id }}
+        run: node booking.js
