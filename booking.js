@@ -6,8 +6,6 @@ const BOT_TOKEN = '8993447347:AAHjIP5P5XOoTqyRyP2nV5b_sEtZC_U7qoE';
 const CHAT_ID = '8932051360';
 
 const API_URL = 'http://210.4.73.10:52/appointments/trust_apt_pub/appointment';
-
-// কনফিগারেশন
 const PAGE_URL = 'http://210.4.73.10:52/appointments/apps/appointment/1460/13030';
 const CHAMBER_ID = '1460';
 const AVERAGE_TIME = '6';
@@ -48,33 +46,45 @@ async function sendTelegramMsg(text) {
       text: text,
       parse_mode: 'Markdown'
     });
+    console.log("Telegram notification sent successfully.");
   } catch (err) {
     console.error("Telegram Error:", err.message);
   }
 }
 
-function getTodayDateBD() {
-  // বাংলাদেশ টাইমজোন অনুযায়ী সঠিক তারিখ বের করা (YYYY-MM-DD)
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+function getBDDateInfo() {
+  const now = new Date();
+  // BD time formatting (YYYY-MM-DD and Day Name)
+  const bdTimeString = now.toLocaleString("en-US", { timeZone: "Asia/Dhaka" });
+  const bdDate = new Date(bdTimeString);
+  
+  const year = bdDate.getFullYear();
+  const month = String(bdDate.getMonth() + 1).padStart(2, '0');
+  const day = String(bdDate.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
+  
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayName = days[bdDate.getDay()];
+  
+  return { dateStr, dayName };
 }
 
 async function runDailyAutomation() {
-  const todayDate = getTodayDateBD();
+  const { dateStr: todayDate, dayName } = getBDDateInfo();
+
+  console.log(`Current BD Date: ${todayDate}, Day:${dayName}`);
 
   // -------------------------------------------------------------
-  // ১. শুক্রবার ফিল্টার (শুক্রবার এলে সরাসরি স্কিপ করবে)
+  // ১. শুক্রবার ফিল্টার (শুক্রবার হলে টেলিগ্রামে মেসেজ দিয়ে বন্ধ হবে)
   // -------------------------------------------------------------
-  const options = { timeZone: 'Asia/Dhaka', weekday: 'long' };
-  const currentDayName = new Date().toLocaleString('en-US', options);
-
-  if (currentDayName.includes('Friday')) {
-    console.log("আজ শুক্রবার (Off Day)। তাই অটোমেশন চালানো হচ্ছে না।");
-    await sendTelegramMsg(`🕌 *Today is Friday (Off Day)!*\nNo appointments will be booked today.`);
+  if (dayName === 'Friday') {
+    console.log("Today is Friday. Skipping automation.");
+    await sendTelegramMsg(`🕌 *Today is Friday (Off Day)!*\nNo serials will be booked today.`);
     return;
   }
 
   // -------------------------------------------------------------
-  // ২. রাত ১২:০৩-এ বুকিং সফল হলে সকাল ৭:০৩-এ স্কিপ করার লজিক
+  // ২. রাত ১২:০৩ এ সফল হলে সকাল ৭:০৩ এ স্কিপ করার লজিক
   // -------------------------------------------------------------
   const STATUS_FILE = '.booking_status.json';
 
@@ -82,12 +92,12 @@ async function runDailyAutomation() {
     try {
       const savedState = JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8'));
       if (savedState.date === todayDate && savedState.success === true) {
-        console.log(`Today's booking already completed at midnight.`);
+        console.log("Booking already completed today.");
         await sendTelegramMsg(`ℹ️ *Notice:* Today's (${todayDate}) serial booking was already completed successfully at midnight. Skipping morning run.`);
         return;
       }
     } catch (err) {
-      console.log("State file read error, proceeding with normal run...");
+      console.log("Status file parse error, continuing with booking...");
     }
   }
 
@@ -126,13 +136,14 @@ async function runDailyAutomation() {
           'Referer': PAGE_URL,
           'Accept-Encoding': 'gzip, deflate',
           'Accept-Language': 'en-BD,en-GB;q=0.9,en-US;q=0.8,en;q=0.7'
-        }
+        },
+        timeout: 15000 // ১৫ সেকেন্ডে রেসপন্স না আসলে টাইমআউট
       });
 
       const resData = response.data;
 
       if (resData && (resData.apt_status === true || resData.status === 200) && resData.message) {
-        isAnyBookingSuccessful = true; // বুকিং সফল হয়েছে চিহ্নিত করা
+        isAnyBookingSuccessful = true;
         const details = resData.message;
         
         const telegramMessage = 
@@ -159,12 +170,13 @@ async function runDailyAutomation() {
       await sendTelegramMsg(`❌ *Job ${serialJobNum} Error:* ${error.message}`);
     }
 
+    // প্রতিটা রিকোয়েস্টের মাঝে ৩০ সেকেন্ড করে ওয়েট করবে
     if (i < patientsList.length - 1) {
-      await new Promise(res => setTimeout(res, 60000));
+      await new Promise(res => setTimeout(res, 30000));
     }
   }
 
-  // যদি অন্তত একটি বুকিং সফল হয়ে থাকে, তবে ফাইল সেভ করা হবে
+  // অন্তত ১ জনের বুকিং হলে ফাইল সেভ করবে
   if (isAnyBookingSuccessful) {
     fs.writeFileSync(STATUS_FILE, JSON.stringify({ date: todayDate, success: true }));
   }
